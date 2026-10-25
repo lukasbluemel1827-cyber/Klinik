@@ -1,0 +1,1056 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Klinikdienst</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=DM+Sans:wght@400;500;700&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: Dienstplan als Spalte. Karte mit Schiene, Patientenakte oben, dunkler Patientenmonitor darunter. */
+:root{
+  --bg:#edf1ef; --surface:#ffffff; --surface2:#e2eae7; --ink:#12201d; --ink2:#4e5f5a; --line:#c9d5d1;
+  --scrub:#13806b; --scrub-ink:#ffffff; --alert:#d23c33; --amber:#b87d00; --ok:#1c8f52; --coin:#b98a00;
+  --mon:#08140f; --mon-ink:#63f0b0; --mon-dim:#7fb9a3; --mon-red:#ff6b61; --mon-amb:#f2b632;
+  --f-display:'Bricolage Grotesque','Trebuchet MS',system-ui,sans-serif;
+  --f-body:'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'Share Tech Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c1311; --surface:#141f1c; --surface2:#1d2c28; --ink:#e6f0ed; --ink2:#97aba5; --line:#2b3c37;
+    --scrub:#2bb89c; --scrub-ink:#04201a; --alert:#ff6b61; --amber:#f2b632; --ok:#47d58a; --coin:#f2c230;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0c1311; --surface:#141f1c; --surface2:#1d2c28; --ink:#e6f0ed; --ink2:#97aba5; --line:#2b3c37;
+  --scrub:#2bb89c; --scrub-ink:#04201a; --alert:#ff6b61; --amber:#f2b632; --ok:#47d58a; --coin:#f2c230;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--ink); font:400 15px/1.45 var(--f-body);
+  padding-block:10px 100px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-tap-highlight-color:transparent;
+}
+body[data-mode="play"]{padding-bottom:28px}
+body[data-mode="play"] #nav, body[data-mode="play"] #top{display:none}
+#app{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;line-height:1.15}
+button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
+button:focus-visible{outline:3px solid var(--scrub);outline-offset:2px}
+button:disabled{cursor:default}
+.eyebrow{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink2);font-weight:700}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Kopfzeile */
+#top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;padding:6px 0 4px}
+.brand{min-width:0;flex:1}
+.brand h1{font-size:24px;font-weight:800;letter-spacing:-.01em}
+.rankline{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px;color:var(--ink2)}
+.rankline b{color:var(--ink);font-weight:700;white-space:nowrap}
+.xp{flex:1;min-width:48px;max-width:140px;height:6px;border-radius:3px;background:var(--surface2);overflow:hidden}
+.xp i{display:block;height:100%;background:var(--scrub)}
+.hud{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.coin{display:flex;align-items:center;gap:7px;font:400 18px/1 var(--f-mono);background:var(--mon);color:var(--mon-ink);padding:7px 11px;border-radius:8px;font-variant-numeric:tabular-nums}
+.coin::before{content:"";width:11px;height:11px;border-radius:50%;background:#f2c230;box-shadow:inset 0 0 0 2px #b98a00}
+.link{background:none;border:0;padding:2px 0;font-size:12px;color:var(--ink2);text-decoration:underline;text-underline-offset:3px}
+
+/* Buttons */
+.primary{width:100%;background:var(--scrub);color:var(--scrub-ink);border:0;border-radius:12px;padding:14px 16px;font-weight:700;font-size:16px}
+.primary:active{transform:translateY(1px)}
+.primary:disabled{opacity:.45}
+.ghost{background:transparent;border:1.5px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:500;color:var(--ink)}
+.ghost.sm{padding:6px 10px;font-size:13px}
+.screen{display:flex;flex-direction:column;gap:14px}
+.screen[hidden]{display:none!important}
+.lead{margin:0;color:var(--ink2)}
+
+/* Dienstplan / Karte */
+.howto{border:1.5px dashed var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.howto p{margin:0}
+.howto b{font-family:var(--f-display)}
+.rail{display:flex;flex-direction:column;position:relative}
+.rail::before{content:"";position:absolute;left:21px;top:20px;bottom:20px;width:2px;background:var(--line)}
+.lv{position:relative;display:grid;grid-template-columns:44px 1fr;gap:12px;text-align:left;background:none;border:0;padding:8px 0;width:100%;align-items:center}
+.lv .no{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:2px solid var(--scrub);font:400 19px/1 var(--f-mono);color:var(--scrub);z-index:1}
+.lv.done .no{background:var(--scrub);color:var(--scrub-ink)}
+.lv:disabled .no{border-color:var(--line);color:var(--ink2)}
+.lv .bd{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.lv:not(:disabled):active .bd{transform:translateY(1px)}
+.lv:disabled .bd{opacity:.55}
+.lv .nm{font-family:var(--f-display);font-weight:800;font-size:17px}
+.lv .sb{font-size:13px;color:var(--ink2)}
+.lv .meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:3px;font-size:12px;color:var(--ink2)}
+.tag{border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-weight:700;letter-spacing:.03em;font-size:11px;text-transform:uppercase}
+.tag.boss{border-color:var(--alert);color:var(--alert)}
+.stars{display:inline-flex;gap:2px}
+.stars svg{width:15px;height:15px;fill:var(--surface2);stroke:var(--line)}
+.stars svg.on{fill:var(--coin);stroke:var(--coin)}
+.foot{font-size:12px;color:var(--ink2);margin:6px 0 0}
+
+/* Shop */
+.item{display:grid;grid-template-columns:48px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:0}
+.badge{width:48px;height:48px;border-radius:10px;background:var(--mon);color:var(--mon-ink);display:grid;place-items:center;font:400 20px/1 var(--f-mono)}
+.item .tx{min-width:0}
+.item b{font-family:var(--f-display);font-size:16px}
+.item p{margin:2px 0 6px;font-size:13px;color:var(--ink2)}
+.pips{display:flex;gap:4px}
+.pips i{width:18px;height:6px;border-radius:3px;background:var(--surface2)}
+.pips i.on{background:var(--scrub)}
+.buy{border:0;border-radius:10px;background:var(--scrub);color:var(--scrub-ink);font-weight:700;padding:10px 12px;min-width:76px;font-variant-numeric:tabular-nums}
+.buy:disabled{background:var(--surface2);color:var(--ink2)}
+
+/* Lexikon */
+.lexgrp{display:flex;flex-direction:column;gap:6px}
+.lexgrp h3{font-size:15px;color:var(--ink2);margin-top:6px}
+details.le{border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+details.le summary{padding:11px 12px;font-weight:700;cursor:pointer;list-style:none}
+details.le summary::-webkit-details-marker{display:none}
+details.le p{margin:0;padding:0 12px 12px;color:var(--ink2)}
+.le.lock{padding:11px 12px;border:1px dashed var(--line);border-radius:10px;color:var(--ink2)}
+
+/* Spiel */
+.gtop{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.gt{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;flex:1}
+.gt b{font-family:var(--f-display);font-size:14px;text-align:center}
+.dots{display:flex;gap:5px}
+.dots i{width:16px;height:5px;border-radius:3px;background:var(--surface2)}
+.dots i.d{background:var(--scrub)}
+.dots i.c{background:var(--ink2)}
+.hearts{display:flex;gap:2px}
+.hearts svg{width:19px;height:19px;fill:var(--surface2)}
+.hearts svg.on{fill:var(--alert)}
+.timer{position:relative;height:22px;border-radius:6px;background:var(--surface2);overflow:hidden}
+#tbar{height:100%;width:100%;background:var(--scrub)}
+#tbar.low{background:var(--alert)}
+#tnum{position:absolute;right:8px;top:0;line-height:22px;font:400 13px/22px var(--f-mono);color:var(--ink)}
+#gMain{display:flex;flex-direction:column;gap:12px}
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:12px 12px 0 0;padding:12px 14px;display:flex;flex-direction:column;gap:6px;margin-bottom:-12px}
+.chart b{font-family:var(--f-display);font-size:17px}
+.chart .compl{margin:0}
+.monitor{background:var(--mon);border-radius:0 0 12px 12px;overflow:hidden;margin-top:0}
+.monitor canvas{display:block;width:100%;height:58px}
+.vit{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid #1d3a2f}
+.v{padding:8px 6px;text-align:center;border-left:1px solid #1d3a2f;color:var(--mon-ink);display:flex;flex-direction:column;gap:1px;min-width:0}
+.v:first-child{border-left:0}
+.v small{font-size:11px;letter-spacing:.06em;color:var(--mon-dim);text-transform:uppercase}
+.v b{font:400 20px/1.1 var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.v i{font-style:normal;font-size:10px;color:var(--mon-dim)}
+.v.red{color:var(--mon-red)}
+.v.amb{color:var(--mon-amb)}
+.panel{display:flex;flex-direction:column;gap:8px}
+.panel h3{font-size:17px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.cnt{font:400 14px var(--f-mono);color:var(--ink2)}
+.exam,.opt,.tri{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;width:100%;background:var(--surface);border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;min-height:50px}
+.exam b{font-weight:700}
+.exam span{font-size:13px;color:var(--ink2)}
+.exam.done{border-color:var(--scrub)}
+.exam.done span{color:var(--ink)}
+.exam:disabled:not(.done){opacity:.45}
+.opt{justify-content:center;font-weight:500}
+.opt.gone{opacity:.3;text-decoration:line-through}
+.finds{border-left:3px solid var(--scrub);padding:2px 0 2px 12px;display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--ink2)}
+.finds b{color:var(--ink)}
+.fb{border-radius:12px;border:1.5px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
+.fb.ok{border-color:var(--ok)}
+.fb.amb{border-color:var(--amber)}
+.fb.bad{border-color:var(--alert)}
+.fb h3{font-size:19px}
+.fb.ok h3{color:var(--ok)}
+.fb.amb h3{color:var(--amber)}
+.fb.bad h3{color:var(--alert)}
+.fb p{margin:0}
+.fb .why{color:var(--ink2);font-size:14px}
+.gain{font:400 15px var(--f-mono);color:var(--coin)}
+
+/* Triage */
+.tri{position:relative;padding-right:56px;font-weight:500}
+.tri .bdg{position:absolute;right:12px;top:50%;transform:translateY(-50%);min-width:34px;height:34px;border-radius:17px;display:none;place-items:center;font:400 18px var(--f-mono);color:#fff;padding:0 8px;white-space:nowrap}
+.tri.on{opacity:.9}
+.tri.on .bdg{display:grid}
+.tri.c0 .bdg,.tri.c1 .bdg{background:#c62f27}
+.tri.c2 .bdg{background:#cf6a00}
+.tri.c3 .bdg{background:#9a7a00}
+.tri.c4 .bdg{background:#1c8f52}
+.shake{animation:shake .35s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.catlist{display:flex;flex-direction:column;gap:4px;font-size:14px}
+.cat{display:inline-block;min-width:104px;font-weight:700}
+
+/* Dosierung */
+.dose{display:flex;flex-direction:column;gap:12px;align-items:stretch}
+.dose .q{font-size:17px;margin:0}
+.dval{font:400 44px/1 var(--f-mono);text-align:center;background:var(--mon);color:var(--mon-ink);border-radius:12px;padding:16px 8px;font-variant-numeric:tabular-nums}
+.dval small{font-size:18px;color:var(--mon-dim);margin-left:6px}
+.dctl{display:grid;grid-template-columns:56px 1fr 56px;gap:10px;align-items:center}
+.dctl button{height:56px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);font:400 26px var(--f-mono)}
+.dctl input{width:100%;height:44px;accent-color:var(--scrub)}
+.note{font-size:12px;color:var(--ink2);margin:0}
+
+/* Reanimation */
+.cpr{display:flex;flex-direction:column;align-items:center;gap:14px}
+.cprbtn{position:relative;width:200px;height:200px;border-radius:50%;border:0;background:var(--alert);color:#fff;font:800 24px var(--f-display);box-shadow:0 6px 0 rgba(0,0,0,.25);user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.cprbtn:active{transform:translateY(4px);box-shadow:0 2px 0 rgba(0,0,0,.25)}
+.cprwrap{position:relative;width:240px;height:240px;display:grid;place-items:center}
+.ring{position:absolute;inset:0;border-radius:50%;border:3px solid var(--alert);opacity:.0;animation:ring .5455s ease-out infinite;pointer-events:none}
+@keyframes ring{0%{transform:scale(.84);opacity:.9}100%{transform:scale(1);opacity:0}}
+.cstats{display:grid;grid-template-columns:repeat(3,1fr);width:100%;background:var(--mon);border-radius:12px;overflow:hidden}
+.cstats .v{padding:10px 6px}
+.qbar{width:100%;height:10px;border-radius:5px;background:var(--surface2);overflow:hidden}
+.qbar i{display:block;height:100%;width:0;background:var(--scrub)}
+
+/* Ergebnis */
+.res{display:flex;flex-direction:column;gap:14px;align-items:stretch}
+.res h2{font-size:26px;font-weight:800}
+.bigstars{display:flex;gap:8px}
+.bigstars svg{width:44px;height:44px;fill:var(--surface2);stroke:var(--line);stroke-width:1}
+.bigstars svg.on{fill:var(--coin);stroke:var(--coin)}
+.rows{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.rows div{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.rows b{font-family:var(--f-mono);font-weight:400;font-variant-numeric:tabular-nums}
+.best{font:400 15px var(--f-mono);color:var(--ink2)}
+
+/* Navigation */
+#nav{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+  padding:0 max(8px,env(safe-area-inset-left,0px)) env(safe-area-inset-bottom,0px) max(8px,env(safe-area-inset-right,0px));z-index:5}
+#nav div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+#nav button{background:none;border:0;border-top:3px solid transparent;padding:14px 4px 13px;font-weight:700;font-size:13px;color:var(--ink2)}
+#nav button[aria-current="page"]{color:var(--scrub);border-top-color:var(--scrub)}
+#nav button.lockd{opacity:.5}
+
+@media (prefers-reduced-motion: reduce){
+  .shake{animation:none}
+}
+</style>
+
+</head>
+<body>
+<div id="app">
+  <header id="top"></header>
+  <section class="screen" id="s-map"></section>
+  <section class="screen" id="s-shop" hidden></section>
+  <section class="screen" id="s-lex" hidden></section>
+  <section class="screen" id="s-endless" hidden></section>
+  <section class="screen" id="s-game" hidden></section>
+  <section class="screen" id="s-result" hidden></section>
+</div>
+<nav id="nav" aria-label="Hauptmenü"><div>
+  <button data-act="tab" data-v="map">Dienst</button>
+  <button data-act="tab" data-v="shop">Ausstattung</button>
+  <button data-act="tab" data-v="lex">Lexikon</button>
+  <button data-act="tab" data-v="endless">Endlos</button>
+</div></nav>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- Daten ---------- */
+var KEY='klinikdienst-v1';
+var RANKS=[['Medizinstudent',0],['Famulant',120],['Assistenzarzt',320],['Facharzt',650],['Oberarzt',1100],['Chefarzt',1800]];
+var UPS=[
+ {id:'steth',code:'ST',name:'Stethoskop',desc:'+8 Sekunden Zeit pro Patient',max:3,cost:[40,90,160]},
+ {id:'us',code:'US',name:'Ultraschallgerät',desc:'+1 Untersuchung pro Patient',max:2,cost:[70,160]},
+ {id:'kaffee',code:'KM',name:'Kaffeemaschine',desc:'+1 Herz pro Dienst',max:2,cost:[90,210]},
+ {id:'buch',code:'FB',name:'Fachbuch',desc:'Hinweise: streicht eine falsche Diagnose. Anzahl pro Dienst entspricht der Stufe.',max:3,cost:[50,110,190]},
+ {id:'koffer',code:'NK',name:'Notfallkoffer',desc:'Größeres Zeitfenster bei der Herzdruckmassage',max:2,cost:[70,150]},
+ {id:'weiter',code:'WB',name:'Weiterbildung',desc:'+15 % Münzen pro Stufe',max:3,cost:[60,130,220]}
+];
+var LEVELS=[
+ {n:1,name:'Hausarztpraxis',sub:'Alltag in der Sprechstunde'},
+ {n:2,name:'Notaufnahme',sub:'Jede Minute zählt'},
+ {n:3,name:'Innere Medizin',sub:'Station 3B',boss:['triage']},
+ {n:4,name:'Chirurgie',sub:'Akutes Abdomen und Co.'},
+ {n:5,name:'Neurologie',sub:'Kopf und Nerven'},
+ {n:6,name:'Kinderklinik',sub:'Kleine Patienten, große Verantwortung',boss:['dosis']},
+ {n:7,name:'Kardiologie',sub:'Herz und Gefäße'},
+ {n:8,name:'Intensivstation',sub:'Kritisch krank',boss:['cpr']},
+ {n:9,name:'Psychiatrie und Geriatrie',sub:'Seele und Alter'},
+ {n:10,name:'Diagnostik',sub:'Labor, Bild, Befund'},
+ {n:11,name:'Infektiologie',sub:'Erreger auf der Spur'},
+ {n:12,name:'Chefarztvisite',sub:'Alles, was du gelernt hast',boss:['triage','dosis','cpr']}
+];
+var BOSSNAME={triage:'Triage',dosis:'Dosierung',cpr:'Reanimation'};
+function C(who,c,v,ex,dx,tx,why){return {who:who,c:c,v:v,ex:ex,dx:dx,tx:tx,why:why};}
+var CASES=[
+/* 1 Hausarztpraxis */
+C('25 Jahre, weiblich','Seit drei Tagen Halskratzen, laufende Nase und leichter Husten. Sie fühlt sich schlapp.',[78,118,76,37.8,98],
+ [['Rachen inspizieren','Gerötet, keine Beläge, Mandeln nicht vergrößert'],['Lunge abhören','Vesikuläratmen, keine Rasselgeräusche'],['Lymphknoten tasten','Leicht vergrößert, gut verschieblich, nicht schmerzhaft']],
+ ['Virale Erkältung','Bakterielle Lungenentzündung','Allergisches Asthma','Eitrige Mandelentzündung'],
+ ['Ruhe, viel trinken, Nasenspray bei Bedarf','Sofort Antibiotikum','Cortison-Spritze','Einweisung ins Krankenhaus'],
+ 'Erkältungen werden meist durch Viren ausgelöst und heilen nach etwa einer Woche von allein aus. Antibiotika wirken nur gegen Bakterien und helfen hier nicht.'),
+C('31 Jahre, weiblich','Brennen beim Wasserlassen und ständiger Harndrang, aber nur wenig Urin. Kein Fieber.',[74,120,78,36.9,99],
+ [['Urin-Streifentest','Leukozyten und Nitrit positiv'],['Nierenlager abklopfen','Kein Klopfschmerz'],['Temperatur prüfen','Normal, kein Fieber']],
+ ['Unkomplizierte Blasenentzündung','Nierenbeckenentzündung','Nierenstein','Blinddarmentzündung'],
+ ['Kurze Antibiotika-Therapie und viel Flüssigkeit','Operative Entfernung des Steins','Bettruhe ohne Medikamente','Sofortige Dialyse'],
+ 'Leukozyten und Nitrit im Urin sprechen für Bakterien in der Blase. Fehlen Fieber und Flankenschmerz, ist meist nur die Blase betroffen.'),
+C('55 Jahre, männlich','Morgendliche Kopfschmerzen im Nacken. Bei drei Messungen zu Hause lag der Blutdruck immer bei etwa 165/100.',[82,166,101,36.7,97],
+ [['Blutdruck an beiden Armen','Seitengleich, 164/100 und 166/102'],['Labor: Nierenwerte','Kreatinin normal'],['EKG','Sinusrhythmus, leichte Linksherzhypertrophie']],
+ ['Arterielle Hypertonie','Migräne','Phäochromozytom','Herzinfarkt'],
+ ['Lebensstiländerung und blutdrucksenkendes Medikament, z. B. ACE-Hemmer','Notfall-Herzkatheter','Triptan bei Bedarf','Blutdruck ignorieren, Kontrolle in fünf Jahren'],
+ 'Dauerhaft erhöhte Werte über 140/90 mmHg gelten als Bluthochdruck. Unbehandelt erhöht er das Risiko für Herzinfarkt und Schlaganfall.'),
+/* 2 Notaufnahme */
+C('58 Jahre, männlich','Drückender Schmerz hinter dem Brustbein seit 40 Minuten, Ausstrahlung in den linken Arm, kalter Schweiß.',[96,142,88,36.8,95],
+ [['12-Kanal-EKG','ST-Hebungen in V2 bis V5'],['Troponin','Deutlich erhöht'],['Röntgen Thorax','Unauffällig, Herz nicht vergrößert']],
+ ['Akuter Herzinfarkt (STEMI)','Lungenentzündung','Refluxkrankheit','Rippenprellung'],
+ ['Sofort ASS, Heparin und Herzkatheter','Antibiotikum und Hustensaft','Säureblocker und Abwarten','Schmerzsalbe und Bettruhe'],
+ 'ST-Hebungen im EKG zeigen den Verschluss eines Herzkranzgefäßes. Je früher das Gefäß im Herzkatheter geöffnet wird, desto mehr Herzmuskel bleibt erhalten.'),
+C('22 Jahre, männlich','Beim Fußballspielen umgeknickt. Der rechte Knöchel ist geschwollen und schmerzt beim Auftreten.',[80,125,80,36.8,99],
+ [['Röntgen Sprunggelenk','Kein Knochenbruch erkennbar'],['Bandstabilität prüfen','Leicht aufklappbar, fester Anschlag'],['Durchblutung und Gefühl','Pulse tastbar, Gefühl intakt']],
+ ['Bänderdehnung oder Anriss am Sprunggelenk','Offener Knochenbruch','Achillessehnenriss','Gichtanfall'],
+ ['Kühlen, Hochlagern, Kompression und Bandage oder Schiene','Notoperation mit Platte','Gips für zwölf Wochen','Cortison-Spritze ins Gelenk'],
+ 'Die Ottawa-Regeln helfen zu entscheiden, wann geröntgt wird. Bei Bänderverletzungen hilft anfangs das PECH-Schema: Pause, Eis, Kompression, Hochlagern.'),
+C('30 Jahre, weiblich','Vor zehn Minuten von einer Wespe gestochen. Jetzt Atemnot, geschwollene Lippen und Nesselausschlag am ganzen Körper.',[132,82,48,36.9,89],
+ [['Atemwege und Lunge','Pfeifendes Atemgeräusch, Stridor'],['Haut ansehen','Großflächige Quaddeln, Rötung'],['Blutdruck wiederholen','Weiter niedrig, Kreislauf instabil']],
+ ['Anaphylaktischer Schock','Panikattacke','Asthmaanfall ohne Auslöser','Kreislaufschwäche beim Aufstehen'],
+ ['Adrenalin intramuskulär, Beine hoch, Infusion','Beruhigungstablette und Tüte vor den Mund','Nur eine Antihistaminikum-Tablette','Warten und beobachten'],
+ 'Bei Anaphylaxie ist Adrenalin das wichtigste Medikament und kommt als Erstes. Es verengt Gefäße, erweitert die Bronchien und stabilisiert den Kreislauf.'),
+/* 3 Innere Medizin */
+C('52 Jahre, männlich','Seit Wochen großer Durst, nächtliches Wasserlassen und Müdigkeit. Übergewicht, der Vater hatte Zuckerkrankheit.',[84,148,92,36.8,98],
+ [['Nüchternblutzucker','Erhöht, 240 mg/dl'],['HbA1c','9,2 Prozent'],['Urin-Streifentest','Glukose positiv, Ketone negativ']],
+ ['Diabetes mellitus Typ 2','Diabetes insipidus','Schilddrüsenüberfunktion','Nierenversagen'],
+ ['Ernährungsumstellung, Bewegung und Metformin','Sofort hochdosiert Insulin über die Vene','Nur Salz reduzieren','Schilddrüsen-Operation'],
+ 'Ein HbA1c über 6,5 Prozent spricht für Diabetes. Beim Typ 2 reagieren die Körperzellen schlechter auf Insulin, Gewichtsabnahme und Bewegung wirken stark.'),
+C('45 Jahre, weiblich','Nach einem Langstreckenflug plötzlich Atemnot und stechender Schmerz beim Einatmen. Die linke Wade ist geschwollen.',[118,112,70,37.2,90],
+ [['D-Dimere','Stark erhöht'],['CT-Angiografie','Embolus in der rechten Lungenarterie'],['Bein-Ultraschall','Thrombose in der linken Beinvene']],
+ ['Lungenembolie','Lungenentzündung','Pneumothorax','Herzinfarkt'],
+ ['Sofort Heparin zur Blutverdünnung','Antibiotikum','Thoraxdrainage','Betablocker und Beobachtung'],
+ 'Ein Blutgerinnsel aus den Beinvenen kann in die Lunge wandern. Blutverdünner verhindern, dass das Gerinnsel wächst, bis der Körper es abbaut.'),
+C('70 Jahre, männlich','Fieber bis 39 Grad, Schüttelfrost und Husten mit gelbgrünem Auswurf seit vier Tagen.',[104,118,72,39.2,91],
+ [['Lunge abhören','Feuchte Rasselgeräusche rechts unten'],['Röntgen Thorax','Verdichtung im rechten Unterlappen'],['CRP und Leukozyten','Beide deutlich erhöht']],
+ ['Bakterielle Lungenentzündung','Lungenembolie','Akute Bronchitis durch Viren','Lungenkrebs'],
+ ['Antibiotikum, Sauerstoff und Flüssigkeit','Heparin über den Perfusor','Nur Hustensaft','Sofortige Bestrahlung'],
+ 'Fieber, Auswurf, Rasselgeräusche und eine Verdichtung im Röntgenbild passen zu einer Pneumonie. Sauerstoff gibt es, wenn die Sättigung unter etwa 92 bis 94 Prozent liegt.'),
+/* 4 Chirurgie */
+C('17 Jahre, männlich','Der Schmerz begann um den Nabel und wanderte in den rechten Unterbauch. Übelkeit, kein Appetit.',[98,122,74,38.3,99],
+ [['Bauch tasten','Druckschmerz am McBurney-Punkt, Abwehrspannung'],['Ultraschall','Verdickter Wurmfortsatz, nicht komprimierbar'],['Blutbild','Leukozyten erhöht']],
+ ['Akute Blinddarmentzündung','Magen-Darm-Grippe','Harnleiterstein','Leistenbruch'],
+ ['Operative Entfernung des Blinddarms und Antibiotikum','Nur Schonkost','Dauerhaft Schmerzmittel ohne Abklärung','Abwarten bis morgen'],
+ 'Der wandernde Schmerz vom Nabel nach rechts unten ist typisch. Ohne Operation droht ein Durchbruch mit Bauchfellentzündung.'),
+C('45 Jahre, weiblich','Krampfartige Schmerzen im rechten Oberbauch nach fettem Essen, Ausstrahlung in die rechte Schulter, Übelkeit.',[88,130,82,37.0,98],
+ [['Ultraschall Oberbauch','Mehrere Gallensteine, keine Wandverdickung'],['Leberwerte und Lipase','Leberwerte leicht erhöht, Lipase normal'],['Bauch tasten','Druckschmerz rechter Oberbauch']],
+ ['Gallenkolik durch Gallensteine','Magengeschwür mit Durchbruch','Akute Bauchspeicheldrüsenentzündung','Nierenkolik rechts'],
+ ['Krampflösende Mittel, später Entfernung der Gallenblase','Magenspiegelung mit Clip','Wochenlange Nahrungskarenz mit Infusion','Steinzertrümmerung der Niere'],
+ 'Nach fettreichen Mahlzeiten zieht sich die Gallenblase zusammen und presst gegen einen Stein. Wiederkehrende Koliken sind ein Grund, die Gallenblase zu entfernen.'),
+C('60 Jahre, männlich','Weiche Schwellung in der rechten Leiste, die beim Husten und Heben größer wird und im Liegen verschwindet.',[72,138,84,36.7,98],
+ [['Leiste tasten beim Husten','Vorwölbung mit Anprall, zurückschiebbar'],['Ultraschall','Darmschlinge in der Bruchpforte'],['Hoden untersuchen','Unauffällig']],
+ ['Leistenbruch (Leistenhernie)','Hodentorsion','Lymphknotenschwellung','Krampfadern'],
+ ['Operativer Verschluss der Bruchpforte, meist mit Netz','Gipsverband','Antibiotikum für zwei Wochen','Dauerhaft Bauchgurt ohne Operation'],
+ 'Bei einem Leistenbruch tritt Gewebe durch eine Schwachstelle der Bauchwand. Ein eingeklemmter Bruch ist ein Notfall, weil der Darm absterben kann.'),
+/* 5 Neurologie */
+C('72 Jahre, männlich','Seit 50 Minuten hängt der rechte Mundwinkel, er findet keine Worte und der rechte Arm ist schwach.',[88,178,98,36.9,96],
+ [['FAST-Test','Gesicht hängt, Arm sinkt ab, Sprache gestört'],['CT des Kopfes','Keine Blutung erkennbar'],['Blutzucker','Normal, 102 mg/dl']],
+ ['Ischämischer Schlaganfall','Hirnblutung','Migräne mit Aura','Unterzuckerung'],
+ ['Sofort Lyse-Therapie oder Thrombektomie prüfen','Blutdruck drastisch senken und abwarten','Schmerzmittel und Bettruhe','Traubenzucker geben'],
+ 'Ein verstopftes Hirngefäß löst den Schlaganfall aus. Zeit ist Gehirn: Mit jeder Minute sterben Millionen Nervenzellen, deshalb zählt jede Minute bis zur Lyse.'),
+C('28 Jahre, weiblich','Einseitiger pochender Kopfschmerz seit Stunden, vorher Flimmern vor den Augen. Licht und Lärm sind unerträglich, dazu Übelkeit.',[76,118,74,36.7,99],
+ [['Neurologischer Status','Unauffällig, keine Ausfälle'],['Nackenbeweglichkeit','Frei, keine Nackensteife'],['Frühere Anfälle erfragen','Ähnliche Anfälle seit Jahren, in der Familie bekannt']],
+ ['Migräne mit Aura','Hirnhautentzündung','Hirnblutung','Spannungskopfschmerz'],
+ ['Dunkler ruhiger Raum, Schmerzmittel und ggf. Triptan','Sofortige Lumbalpunktion','Notoperation am Kopf','Antibiotikum über die Vene'],
+ 'Migräne ist meist einseitig, pulsierend und mit Übelkeit sowie Licht- und Lärmempfindlichkeit verbunden. Die Aura sind kurze neurologische Symptome vor dem Schmerz.'),
+C('19 Jahre, männlich','Hohes Fieber, rasende Kopfschmerzen, Nackenschmerzen und Lichtscheu seit dem Morgen. Er wirkt schläfrig.',[118,105,62,39.6,96],
+ [['Nackensteifigkeit prüfen','Deutlich positiv, Kinn lässt sich nicht zur Brust beugen'],['Haut ansehen','Kleine rote Punktblutungen am Rumpf'],['Lumbalpunktion','Trüber Liquor, viele Granulozyten']],
+ ['Bakterielle Meningitis','Migräne','Virale Erkältung','Spannungskopfschmerz'],
+ ['Sofort Antibiotikum und Dexamethason','Nur Ibuprofen und Ruhe','Abwarten bis morgen','Nasenspray'],
+ 'Fieber, Kopfschmerz und Nackensteife bilden die klassische Trias. Eine bakterielle Meningitis ist lebensbedrohlich, das Antibiotikum wird ohne Verzögerung gegeben.'),
+/* 6 Kinderklinik */
+C('4 Jahre, männlich','Nachts Ohrenschmerzen, greift sich ans rechte Ohr, Fieber und weinerlich.',[110,95,60,38.8,99],
+ [['Ohr spiegeln','Rotes, vorgewölbtes Trommelfell'],['Rachen inspizieren','Leicht gerötet'],['Hörtest (grob)','Rechts etwas vermindert']],
+ ['Akute Mittelohrentzündung','Gehörgangsentzündung durch Wasser','Fremdkörper im Ohr','Mumps'],
+ ['Schmerz- und Fiebermittel, Abwarten, Antibiotikum nur bei Bedarf','Sofort Paukenröhrchen operieren','Ohr mit Wasser durchspülen','Ohrstöpsel und Ohrentropfen'],
+ 'Eine Mittelohrentzündung beginnt oft nach einem Infekt der oberen Atemwege. Viele Fälle heilen ohne Antibiotikum, Schmerzmittel sind das Wichtigste.'),
+C('2 Jahre, weiblich','Nachts plötzlich bellender Husten, Heiserkeit und ziehende Atemgeräusche beim Einatmen.',[140,92,58,37.9,95],
+ [['Atemgeräusch beim Einatmen','Stridor, nur beim Einatmen'],['Rachen inspizieren','Leicht gerötet, kein Belag, Kind kann schlucken'],['Temperatur messen','Leicht erhöht, 37,9 Grad']],
+ ['Pseudokrupp (Laryngitis subglottica)','Akute Epiglottitis','Asthmaanfall','Fremdkörper in der Luftröhre'],
+ ['Kühle Luft, Beruhigung und Cortison','Sofort Antibiotikum und Intubation im Wachzustand','Hustenstiller und flach hinlegen','Nur Salzwasser-Inhalation ohne Cortison'],
+ 'Pseudokrupp entsteht durch Schwellung unter den Stimmbändern bei einem Virusinfekt. Cortison lässt die Schleimhaut abschwellen, Ruhe ist wichtig, weil Schreien die Atemnot verstärkt.'),
+C('1 Jahr, weiblich','Zwei Tage Erbrechen und Durchfall. Trinkt kaum, wenig nasse Windeln, wirkt schlapp.',[155,85,50,38.2,98],
+ [['Schleimhäute und Haut','Trockene Lippen, stehende Hautfalten, eingesunkene Fontanelle'],['Stuhlprobe','Rotavirus-Antigen positiv'],['Gewichtskontrolle','Fünf Prozent Gewichtsverlust']],
+ ['Gastroenteritis mit Flüssigkeitsmangel','Blinddarmentzündung','Darmverschluss','Nahrungsmittelallergie'],
+ ['Orale Rehydrationslösung in kleinen Schlucken, bei Bedarf Infusion','Sofortige Operation','Nur Wasser ohne Salz und Zucker','Starkes Antibiotikum'],
+ 'Bei Kleinkindern führt Durchfall schnell zu Flüssigkeitsmangel. Spezielle Trinklösungen mit Zucker und Salz werden besser aufgenommen als reines Wasser.'),
+/* 7 Kardiologie */
+C('68 Jahre, männlich','Unregelmäßiges Herzrasen seit gestern Abend, Schwindel und leichte Luftnot.',[134,128,80,36.7,96],
+ [['EKG','Absolute Arrhythmie, keine P-Wellen'],['Echokardiografie','Vorhof erweitert, Pumpfunktion normal'],['Schilddrüsenwerte','Normal']],
+ ['Vorhofflimmern','Kammerflimmern','AV-Block III. Grades','Sinustachykardie bei Angst'],
+ ['Pulskontrolle (z. B. Betablocker) und Blutverdünnung gegen Schlaganfall','Sofortige Defibrillation','Notfall-Herzschrittmacher','Beruhigen und entlassen'],
+ 'Beim Vorhofflimmern bilden sich leicht Gerinnsel im Vorhof, die einen Schlaganfall verursachen können. Darum gehört meist ein Blutverdünner zur Therapie.'),
+C('75 Jahre, weiblich','Atemnot beim Treppensteigen, dicke Knöchel und nächtlicher Husten im Liegen. Drei Kilo Gewichtszunahme in einer Woche.',[96,138,84,36.6,92],
+ [['NT-proBNP','Stark erhöht'],['Echokardiografie','Pumpfunktion auf 30 Prozent reduziert'],['Röntgen Thorax','Lungenstauung, vergrößertes Herz']],
+ ['Herzinsuffizienz','Asthma bronchiale','Nierenversagen','Lungenembolie'],
+ ['Entwässerung, ACE-Hemmer und Betablocker','Cortison und Asthma-Spray','Sofort Dialyse','Heparin hochdosiert'],
+ 'Ein schwaches Herz pumpt nicht genug Blut, Flüssigkeit staut sich in Lunge und Beinen. Wassertabletten entlasten das Herz, ACE-Hemmer und Betablocker verbessern langfristig die Prognose.'),
+C('58 Jahre, männlich','Plötzlicher reißender Schmerz zwischen den Schulterblättern, der schlimmste seines Lebens. Bekannter Bluthochdruck.',[110,190,100,36.8,96],
+ [['Blutdruck an beiden Armen','Rechts 190, links 140 mmHg'],['CT-Angiografie','Einriss der Aortenwand im aufsteigenden Teil'],['EKG','Keine ST-Hebungen']],
+ ['Aortendissektion','Herzinfarkt','Lungenembolie','Hexenschuss'],
+ ['Blutdruck senken und Notoperation','Heparin und Lyse','Wärmepflaster und Krankengymnastik','Antibiotikum'],
+ 'Bei einer Dissektion reißt die innere Wandschicht der Hauptschlagader ein. Blutverdünner wären hier gefährlich, deshalb wird zuerst der Blutdruck gesenkt und operiert.'),
+/* 8 Intensivstation */
+C('65 Jahre, weiblich','Seit zwei Tagen Harnwegsinfekt, jetzt Fieber, Schüttelfrost und Verwirrtheit. Sie atmet schnell.',[122,84,48,39.1,92],
+ [['Laktat','Erhöht, 4,5 mmol/l'],['Blutkulturen','Bakterien im Blut nachweisbar'],['Atemfrequenz zählen','28 pro Minute']],
+ ['Sepsis mit septischem Schock','Grippaler Infekt','Panikattacke','Unterzuckerung'],
+ ['Antibiotikum innerhalb einer Stunde, Infusion, ggf. Noradrenalin','Fiebersenkung und Abwarten','Beruhigungsmittel','Traubenzucker'],
+ 'Eine Sepsis ist eine lebensbedrohliche Fehlreaktion des Körpers auf eine Infektion. Je schneller das Antibiotikum fließt, desto besser sind die Überlebenschancen.'),
+C('40 Jahre, männlich','Typ-1-Diabetiker. Ein Kollege findet ihn schwitzend, zitternd und verwirrt. Er hat Insulin gespritzt, aber nichts gegessen.',[112,130,80,36.5,98],
+ [['Blutzucker messen','32 mg/dl'],['Bewusstsein prüfen','Ansprechbar, verlangsamt, kann schlucken'],['Haut und Schweiß','Kalt-feucht, stark verschwitzt']],
+ ['Schwere Unterzuckerung','Diabetische Ketoazidose','Schlaganfall','Epileptischer Anfall'],
+ ['Schnell wirksamen Zucker geben (Traubenzucker oder Saft)','Noch mehr Insulin spritzen','Nur Wasser trinken lassen','Schlafen lassen'],
+ 'Ein Blutzucker unter 70 mg/dl gilt als Unterzuckerung, unter 54 als klinisch bedeutsam. Wer noch schlucken kann, bekommt Traubenzucker, sonst Glukose über die Vene oder Glukagon.'),
+C('22 Jahre, weiblich','Bekannter Typ-1-Diabetes. Seit einem Tag Übelkeit, Bauchschmerz, tiefe schnelle Atmung und Acetongeruch im Atem.',[120,98,60,37.4,98],
+ [['Blutzucker','520 mg/dl'],['Blutgasanalyse','pH 7,10, metabolische Azidose'],['Urin','Ketone stark positiv']],
+ ['Diabetische Ketoazidose','Schwere Unterzuckerung','Lungenentzündung','Blinddarmentzündung'],
+ ['Flüssigkeit, Insulin über die Vene und Kaliumkontrolle','Schnell wirksamen Zucker geben','Antibiotikum und Sauerstoff','Notoperation am Bauch'],
+ 'Ohne Insulin baut der Körper Fett zu Ketonen ab und das Blut übersäuert. Die tiefe, schnelle Kussmaul-Atmung versucht, die Säure abzuatmen.'),
+/* 9 Psychiatrie und Geriatrie */
+C('26 Jahre, weiblich','Plötzlich Herzrasen, Engegefühl, Kribbeln in den Händen und Todesangst. Nach zehn Minuten wird es besser. Es war schon einmal so.',[124,134,84,36.7,99],
+ [['EKG','Sinustachykardie, sonst unauffällig'],['Labor: Troponin und TSH','Beide normal'],['Atemmuster beobachten','Schnelle, flache Atmung']],
+ ['Panikattacke','Herzinfarkt','Lungenembolie','Schilddrüsenüberfunktion'],
+ ['Beruhigung, ruhige Atmung, Aufklärung und Psychotherapie anbieten','Notfall-Herzkatheter','Heparin','Schilddrüsen-Operation'],
+ 'Bei Panikattacken fühlen sich Körpersymptome lebensbedrohlich an, die Organe sind aber gesund. Zuerst werden körperliche Ursachen ausgeschlossen, dann hilft vor allem Verhaltenstherapie.'),
+C('38 Jahre, männlich','Seit Wochen gedrückte Stimmung, Antriebslosigkeit, Schlafstörungen und keine Freude mehr an den Hobbys. Im Job kommt er kaum noch zurecht.',[70,120,76,36.6,99],
+ [['Gespräch mit Screening-Fragebogen','Deutlich erhöhter Punktwert für depressive Symptome'],['Schilddrüsenwerte','Normal'],['Blutbild','Unauffällig']],
+ ['Depressive Episode','Schilddrüsenunterfunktion','Eisenmangelanämie','Grippaler Infekt'],
+ ['Gespräch, Psychotherapie und ggf. Antidepressivum','Schilddrüsenhormon','Eisen-Infusion','Nur Urlaub und Abwarten'],
+ 'Bei einer Depression halten gedrückte Stimmung und Interessenverlust mindestens zwei Wochen an. Vor der Diagnose werden körperliche Ursachen wie Schilddrüsenprobleme ausgeschlossen.'),
+C('80 Jahre, männlich','Zwei Tage nach einer Hüft-OP plötzlich verwirrt, sieht Tiere an der Wand, nachts wach und tagsüber schläfrig.',[96,132,78,37.9,93],
+ [['Orientierung prüfen','Zeitlich und örtlich desorientiert, schwankende Aufmerksamkeit'],['Labor und Urin','Leichter Harnwegsinfekt, Natrium niedrig'],['Medikamentenliste','Neues starkes Schmerzmittel und Schlafmittel']],
+ ['Postoperatives Delir','Alzheimer-Demenz','Schlaganfall','Schizophrenie'],
+ ['Auslöser behandeln, Orientierungshilfen, Brille und Hörgerät, ruhiges Umfeld','Dauerhaft hohe Dosis Beruhigungsmittel','Fixieren und Raum abdunkeln','Entlassung nach Hause'],
+ 'Ein Delir ist eine akute Verwirrtheit mit schwankendem Verlauf, oft nach Operationen. Es hat meist behandelbare Auslöser wie Infekte, Schmerzen oder Medikamente.'),
+/* 10 Diagnostik */
+C('22 Jahre, männlich','Groß und schlank. Plötzlich stechender Schmerz rechts im Brustkorb und Atemnot in Ruhe.',[104,122,76,36.8,93],
+ [['Lunge abhören','Rechts kaum Atemgeräusch, hypersonorer Klopfschall'],['Röntgen Thorax','Rechte Lunge kollabiert, Luftsaum sichtbar'],['Blutdruck und Halsvenen','Stabil, keine Halsvenenstauung']],
+ ['Spontanpneumothorax','Lungenembolie','Herzinfarkt','Rippenserienfraktur'],
+ ['Thoraxdrainage bei großem Pneumothorax und Sauerstoff','Heparin','Herzkatheter','Brustkorb fest bandagieren'],
+ 'Bei jungen, schlanken Menschen können kleine Lungenbläschen an der Spitze platzen. Dann strömt Luft in den Pleuraspalt und die Lunge fällt in sich zusammen.'),
+C('38 Jahre, männlich','Wellenförmige, heftigste Schmerzen in der linken Flanke mit Ausstrahlung in die Leiste. Übelkeit, rotes Wasserlassen.',[100,150,92,37.1,98],
+ [['Urin-Streifentest','Blut im Urin, keine Nitritreaktion'],['Ultraschall Niere','Aufgestautes Nierenbecken links'],['CT ohne Kontrastmittel','Stein im linken Harnleiter, 5 mm']],
+ ['Harnleiterstein mit Nierenkolik','Blinddarmentzündung','Bandscheibenvorfall','Nierenbeckenentzündung mit Sepsis'],
+ ['Schmerzmittel (NSAR), krampflösend, viel Bewegung und Trinken','Sofortige Entfernung der Niere','Hochdosiert Antibiotikum über die Vene','Bettruhe ohne Trinken'],
+ 'Kleine Harnleitersteine unter etwa 6 Millimetern gehen oft von allein ab. Entzündungshemmende Schmerzmittel wirken bei der Kolik besonders gut.'),
+C('34 Jahre, weiblich','Gewichtsverlust trotz gutem Appetit, Herzklopfen, Zittern, Schwitzen und innere Unruhe. Die Augen wirken hervorstehend.',[116,142,70,37.4,99],
+ [['TSH und freie Hormone','TSH unterdrückt, fT4 erhöht'],['Ultraschall Schilddrüse','Vergrößert, echoarm, stark durchblutet'],['Antikörper','TRAK positiv']],
+ ['Hyperthyreose bei Morbus Basedow','Schilddrüsenunterfunktion','Panikstörung','Phäochromozytom'],
+ ['Thyreostatikum, Betablocker gegen das Herzrasen','Schilddrüsenhormon-Tabletten','Nur Beruhigungsmittel','Nebenniere operieren'],
+ 'Bei Morbus Basedow stimulieren Antikörper die Schilddrüse dauerhaft. Thyreostatika bremsen die Hormonbildung, Betablocker lindern Herzrasen und Zittern.'),
+/* 11 Infektiologie */
+C('35 Jahre, männlich','Zwei Wochen nach der Rückkehr aus Westafrika hohes Fieber mit Schüttelfrost, Kopf- und Gliederschmerzen. Keine Malariaprophylaxe genommen.',[112,108,66,40.0,97],
+ [['Dicker Tropfen und Ausstrich','Plasmodium falciparum nachweisbar'],['Blutbild','Thrombozyten niedrig, Anämie'],['Reiseanamnese','Aufenthalt in einem Hochrisikogebiet']],
+ ['Malaria tropica','Grippe','Dengue-Fieber','Typhus'],
+ ['Sofort stationär, Artemisinin-basierte Kombinationstherapie','Nur Fieberzäpfchen','Antibiotikum gegen Bakterien','Abwarten, Grippe heilt von allein'],
+ 'Nach Tropenreisen gilt bei Fieber so lange Malaria als Ursache, bis sie ausgeschlossen ist. Plasmodium falciparum kann innerhalb von Stunden gefährlich werden.'),
+C('40 Jahre, männlich','Vor zwei Wochen Zeckenstich am Oberschenkel. Jetzt eine wachsende, kreisrunde Rötung mit hellem Zentrum, er ist leicht müde.',[72,126,80,37.3,99],
+ [['Haut ansehen','Ringförmige Rötung, 12 cm, Erythema migrans'],['Lymphknoten','Leicht vergrößert in der Leiste'],['Neurologischer Status','Unauffällig']],
+ ['Lyme-Borreliose im Frühstadium','Kontaktallergie','FSME','Wundrose durch Streptokokken'],
+ ['Antibiotikum, z. B. Doxycyclin','Cortisonsalbe','Frühsommer-Impfung nachholen','Stich mit Öl behandeln'],
+ 'Das Erythema migrans ist ein typisches Zeichen der Borreliose und wird allein anhand der Haut diagnostiziert. FSME verläuft dagegen mit Grippesymptomen und kann eine Hirnhautentzündung auslösen.'),
+C('62 Jahre, weiblich','Seit drei Tagen brennender Schmerz auf der linken Rumpfseite, jetzt gruppierte Bläschen auf gerötetem Grund, gürtelförmig angeordnet.',[78,134,82,37.4,98],
+ [['Haut ansehen','Gruppierte Bläschen in einem Hautsegment, einseitig'],['Gefühl prüfen','Berührungsempfindlich, brennender Schmerz'],['Abstrich','Varizella-Zoster-Virus nachweisbar']],
+ ['Gürtelrose (Herpes zoster)','Kontaktekzem','Rippenfellentzündung','Windpocken'],
+ ['Virostatikum (z. B. Aciclovir) und Schmerztherapie','Pilzmittel','Antibiotika-Creme','Cortison-Creme allein'],
+ 'Nach Windpocken bleiben Varizella-Zoster-Viren in Nervenzellen und können später als Gürtelrose wieder aktiv werden. Frühe Virostatika verkürzen den Verlauf und senken das Risiko für Nervenschmerzen.'),
+/* 12 Chefarztvisite */
+C('66 Jahre, weiblich','Abends starke Schmerzen im rechten Auge, Kopfschmerz, Übelkeit, Lichthöfe um Lampen und verschwommenes Sehen.',[90,150,88,36.8,98],
+ [['Augeninnendruck messen','58 mmHg rechts (normal etwa 10 bis 21)'],['Auge ansehen','Rotes Auge, mittelweite starre Pupille, trübe Hornhaut'],['Augenhintergrund','Schlecht beurteilbar wegen der Hornhauttrübung']],
+ ['Akuter Winkelblock-Glaukomanfall','Bindehautentzündung','Migräne','Netzhautablösung'],
+ ['Drucksenkende Augentropfen und Acetazolamid, dann Laser-Iridotomie','Antibiotische Augentropfen','Triptan','Auge verbinden und abwarten'],
+ 'Beim Winkelblock staut sich Kammerwasser und der Augeninnendruck steigt stark an. Ohne rasche Behandlung kann der Sehnerv dauerhaft geschädigt werden.'),
+C('15 Jahre, männlich','Plötzlicher stärkster Schmerz im linken Hoden vor einer Stunde, Übelkeit, Erbrechen. Kein Fieber.',[108,126,78,36.9,99],
+ [['Hoden tasten','Hochstehend, quergestellt, sehr druckempfindlich'],['Kremasterreflex','Links fehlend'],['Doppler-Ultraschall','Keine Durchblutung im linken Hoden']],
+ ['Hodentorsion','Nebenhodenentzündung','Leistenbruch','Mumps-Orchitis'],
+ ['Sofortige Operation mit Entdrehung und Fixierung beider Hoden','Antibiotikum für zehn Tage','Kühlen und Abwarten','Schmerzmittel und Kontrolle in einer Woche'],
+ 'Beim verdrehten Hoden wird die Blutversorgung abgeschnürt. Innerhalb von etwa sechs Stunden muss operiert werden, damit der Hoden gerettet werden kann.'),
+C('28 Jahre, weiblich','Seit sechs Wochen keine Periode, jetzt plötzlicher starker Unterbauchschmerz links, Schmierblutung und Schwindel.',[128,86,50,36.8,98],
+ [['Schwangerschaftstest und beta-hCG','Positiv, beta-hCG erhöht'],['Vaginaler Ultraschall','Kein Fruchtsack in der Gebärmutter, freie Flüssigkeit im Bauchraum'],['Kreislauf beurteilen','Blass, kaltschweißig, Puls steigt']],
+ ['Geplatzte Eileiterschwangerschaft','Blinddarmentzündung','Harnwegsinfekt','Normale Frühschwangerschaft'],
+ ['Sofort Zugänge, Volumen und Notfall-Laparoskopie','Antibiotikum und Abwarten','Nur Schmerzmittel und Bettruhe','Entlassung mit Kontrolle in einer Woche'],
+ 'Nistet sich die befruchtete Eizelle im Eileiter ein, kann dieser reißen und stark bluten. Positiver Schwangerschaftstest plus Schmerz und Schockzeichen bedeuten Notfall.')
+];
+var TRI=[
+ ['Mann, 60, bewusstlos, atmet nicht','Frau, 34, spritzende Blutung am Oberschenkel, blass, Puls 130','Mann, 45, Druck auf der Brust, Blutdruck stabil, ansprechbar','Kind, 6, Unterarm sichtbar verformt, ansprechbar, Finger warm und rosig','Frau, 25, kleine Schnittwunde am Finger, blutet kaum'],
+ ['Mann, 28, schwere Atemnot, Lippen bläulich, spricht nur einzelne Worte','Frau, 70, plötzlich hängender Mundwinkel und Sprachstörung seit 30 Minuten','Frau, 55, wellenartige heftige Flankenschmerzen, Kreislauf stabil','Mann, 19, Halsschmerzen und Fieber 38,5 seit zwei Tagen, stabil','Frau, 40, Rückenschmerzen seit Wochen, kein Notfall'],
+ ['Junge, 3, hat etwas verschluckt, kann nicht atmen, läuft blau an','Frau, 30, Wespenstich, Zunge schwillt an, pfeifende Atmung','Mann, 75, gestürzt, Hüftschmerz, kann nicht aufstehen, Kreislauf stabil','Mann, 33, Knöchel umgeknickt, leicht geschwollen, kann auftreten','Frau, 22, Schnupfen und Halsschmerzen seit zwei Tagen']
+];
+var TRICAT=['Rot, sofort','Rot, sofort','Orange, sehr dringend','Gelb, dringend','Grün, normal'];
+var HEART='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z';
+var STAR='12,2 15.1,8.6 22,9.3 16.8,14 18.2,21 12,17.5 5.8,21 7.2,14 2,9.3 8.9,8.6';
+
+/* ---------- Zustand ---------- */
+function defState(){return {coins:40,xp:0,stars:{},up:{},lex:{},best:0,mute:false};}
+var S=load();
+function load(){
+  try{var r=localStorage.getItem(KEY); if(r){var o=JSON.parse(r); var d=defState(); for(var k in d){if(o[k]!==undefined)d[k]=o[k];} return d;}}catch(e){}
+  return defState();
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+var G=null;
+
+/* ---------- Helfer ---------- */
+function $(id){return document.getElementById(id);}
+function rnd(n){return Math.floor(Math.random()*n);}
+function shuffle(a){var b=a.slice();for(var i=b.length-1;i>0;i--){var j=rnd(i+1);var t=b[i];b[i]=b[j];b[j]=t;}return b;}
+function upLv(id){return S.up[id]||0;}
+function fmt(v){return String(v).replace('.',',');}
+function rankOf(xp){var r=0;for(var i=0;i<RANKS.length;i++){if(xp>=RANKS[i][1])r=i;}return r;}
+function unlockedLevels(){var n=1;while(n<12&&(S.stars[n]||0)>0)n++;return n;}
+function deptOf(i){return LEVELS[Math.floor(i/3)].name;}
+var AC=null;
+function beep(f,d,v){
+  if(S.mute)return;
+  try{
+    if(!AC)AC=new (window.AudioContext||window.webkitAudioContext)();
+    var o=AC.createOscillator(),g=AC.createGain(),t=AC.currentTime;
+    o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(v||0.06,t);g.gain.exponentialRampToValueAtTime(0.0001,t+d);
+    o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+d);
+  }catch(e){}
+}
+function starsSvg(n,cls){
+  var s='';for(var i=0;i<3;i++){s+='<svg viewBox="0 0 24 24" class="'+(i<n?'on':'')+'" aria-hidden="true"><polygon points="'+STAR+'"/></svg>';}
+  return '<span class="'+cls+'" role="img" aria-label="'+n+' von 3 Sternen">'+s+'</span>';
+}
+function heartsHtml(){
+  var s='';for(var i=0;i<G.maxHearts;i++){s+='<svg viewBox="0 0 24 24" class="'+(i<G.hearts?'on':'')+'" aria-hidden="true"><path d="'+HEART+'"/></svg>';}
+  return s;
+}
+
+/* ---------- Kopfzeile und Navigation ---------- */
+function renderTop(){
+  var r=rankOf(S.xp),next=RANKS[r+1],cur=RANKS[r][1];
+  var pct=next?Math.round((S.xp-cur)/(next[1]-cur)*100):100;
+  $('top').innerHTML='<div class="brand"><h1>Klinikdienst</h1><div class="rankline"><b>'+RANKS[r][0]+'</b><div class="xp" role="img" aria-label="Fortschritt zum nächsten Rang"><i style="width:'+pct+'%"></i></div></div></div>'+
+   '<div class="hud"><div class="coin" role="img" aria-label="'+S.coins+' Münzen">'+S.coins+'</div><button class="link" data-act="snd">Ton '+(S.mute?'aus':'an')+'</button></div>';
+}
+function show(v){
+  var list=document.querySelectorAll('.screen');
+  for(var i=0;i<list.length;i++){list[i].hidden=(list[i].id!=='s-'+v);}
+  document.body.setAttribute('data-mode',v==='game'?'play':'hub');
+  var nb=document.querySelectorAll('#nav button');
+  for(var j=0;j<nb.length;j++){nb[j].setAttribute('aria-current',nb[j].getAttribute('data-v')===v?'page':'false');}
+  window.scrollTo(0,0);
+}
+function stopAll(){stopTimer();stopEcg();stopCpr();}
+function tab(v){
+  stopAll();G=null;renderTop();
+  if(v==='map')renderMap();else if(v==='shop')renderShop();else if(v==='lex')renderLex();else renderEndless();
+  show(v);
+}
+
+/* ---------- Karte ---------- */
+function renderMap(){
+  var un=unlockedLevels(),h='';
+  var any=false;for(var k in S.stars){if(S.stars[k]>0)any=true;}
+  if(!any){h+='<div class="howto"><b>So läuft ein Dienst</b><p>Lies die Akte, untersuche mit begrenzten Mitteln, stelle die Diagnose und wähle die Therapie. Jeder Fehler kostet ein Herz, jede Sekunde zählt.</p></div>';}
+  h+='<div class="rail">';
+  for(var i=0;i<LEVELS.length;i++){
+    var L=LEVELS[i],locked=L.n>un,st=S.stars[L.n]||0;
+    var tags='';
+    if(L.boss){tags='<span class="tag boss">'+(L.boss.length>1?'Chefvisite: alle drei':'Boss: '+BOSSNAME[L.boss[0]])+'</span>';}
+    h+='<button class="lv'+(st>0?' done':'')+'" data-act="lvl" data-n="'+L.n+'"'+(locked?' disabled':'')+'><span class="no">'+L.n+'</span><span class="bd"><span class="nm">'+L.name+'</span><span class="sb">'+L.sub+'</span><span class="meta"><span>3 Patienten</span>'+tags+starsSvg(st,'stars')+(locked?'<span>gesperrt</span>':'')+'</span></span></button>';
+  }
+  h+='</div><p class="foot">Lernspiel. Es ersetzt keine ärztliche Beratung und gibt keine Behandlungsempfehlung für echte Beschwerden.</p>';
+  $('s-map').innerHTML=h;
+}
+
+/* ---------- Ausstattung ---------- */
+function renderShop(){
+  var h='<div><h2>Ausstattung</h2><p class="lead">Verbessere deine Station mit den Münzen aus deinen Diensten.</p></div><div>';
+  for(var i=0;i<UPS.length;i++){
+    var u=UPS[i],lv=upLv(u.id),pips='';
+    for(var p=0;p<u.max;p++){pips+='<i class="'+(p<lv?'on':'')+'"></i>';}
+    var maxed=lv>=u.max,cost=maxed?0:u.cost[lv];
+    h+='<div class="item"><div class="badge" aria-hidden="true">'+u.code+'</div><div class="tx"><b>'+u.name+'</b><p>'+u.desc+'</p><div class="pips" role="img" aria-label="Stufe '+lv+' von '+u.max+'">'+pips+'</div></div>'+
+      '<button class="buy" data-act="buy" data-id="'+u.id+'"'+((maxed||S.coins<cost)?' disabled':'')+'>'+(maxed?'Max':cost)+'</button></div>';
+  }
+  h+='</div><button class="link" data-act="reset">Spielstand löschen</button>';
+  $('s-shop').innerHTML=h;
+}
+
+/* ---------- Lexikon ---------- */
+function renderLex(){
+  var n=0;for(var k in S.lex){if(S.lex[k])n++;}
+  var h='<div><h2>Lexikon</h2><p class="lead">'+n+' von '+CASES.length+' Krankheitsbildern entdeckt. Jeder behandelte Fall wird hier erklärt.</p></div>';
+  for(var l=0;l<LEVELS.length;l++){
+    h+='<div class="lexgrp"><h3>'+LEVELS[l].name+'</h3>';
+    for(var k2=0;k2<3;k2++){
+      var i=l*3+k2,c=CASES[i];
+      if(S.lex[i]){h+='<details class="le"><summary>'+c.dx[0]+'</summary><p>'+c.why+'</p></details>';}
+      else{h+='<div class="le lock">Noch nicht behandelt</div>';}
+    }
+    h+='</div>';
+  }
+  $('s-lex').innerHTML=h;
+}
+
+/* ---------- Endlos ---------- */
+function renderEndless(){
+  var ok=unlockedLevels()>=3;
+  var h='<div><h2>Endlosdienst</h2><p class="lead">Die Patienten kommen zufällig aus allen Abteilungen, die du freigeschaltet hast. Die Zeit wird mit jedem geretteten Patienten knapper, bis dir die Herzen ausgehen.</p></div>';
+  h+='<div class="best">Bestwert: '+S.best+' Patienten</div>';
+  h+='<button class="primary" data-act="endless"'+(ok?'':' disabled')+'>Dienst starten</button>';
+  if(!ok){h+='<p class="foot">Schließe Level 2 ab, um den Endlosdienst freizuschalten.</p>';}
+  $('s-endless').innerHTML=h;
+}
+
+/* ---------- Spielablauf ---------- */
+function newSession(mode,lvl){
+  var mh=3+upLv('kaffee');
+  return {mode:mode,lvl:lvl,tasks:[],ti:0,hearts:mh,maxHearts:mh,mistakes:0,coins:0,xp:0,saved:0,total:0,hints:upLv('buch'),over:false,seen:[],pool:[],rank0:rankOf(S.xp),tl:0,P:null,M:null};
+}
+function startLevel(n){
+  var L=LEVELS[n-1];G=newSession('level',n);
+  for(var k=0;k<3;k++){G.tasks.push({t:'case',i:(n-1)*3+k});}
+  var b=L.boss||[];for(var j=0;j<b.length;j++){G.tasks.push({t:b[j]});}
+  show('game');nextTask();
+}
+function startEndless(){
+  if(unlockedLevels()<3)return;
+  G=newSession('endless',0);
+  var n=unlockedLevels();
+  for(var l=0;l<n;l++){for(var k=0;k<3;k++){G.pool.push(l*3+k);}}
+  show('game');nextTask();
+}
+function pickEndless(){
+  var av=G.pool.filter(function(i){return G.seen.indexOf(i)<0;});
+  if(!av.length){G.seen=[];av=G.pool.slice();}
+  var i=av[rnd(av.length)];G.seen.push(i);return i;
+}
+function nextTask(){
+  stopAll();window.scrollTo(0,0);
+  if(G.mode==='level'){
+    if(G.ti>=G.tasks.length){finishLevel();return;}
+    var t=G.tasks[G.ti];
+    if(t.t==='case')runCase(t.i);else if(t.t==='triage')runTriage();else if(t.t==='dosis')runDosis();else runCpr();
+  }else{runCase(pickEndless());}
+}
+function afterTask(){
+  G.ti++;
+  if(G.over){endRun();return;}
+  nextTask();
+}
+function shell(label,inner,withTimer){
+  var prog='';
+  if(G.mode==='level'){for(var k=0;k<G.tasks.length;k++){prog+='<i class="'+(k<G.ti?'d':(k===G.ti?'c':''))+'"></i>';}}
+  return '<div class="gtop"><button class="ghost sm" data-act="quit">Beenden</button><div class="gt"><b>'+label+'</b><div class="dots">'+prog+'</div></div><div class="hearts" id="hearts" role="img" aria-label="'+G.hearts+' von '+G.maxHearts+' Herzen">'+heartsHtml()+'</div></div>'+
+    (withTimer?'<div class="timer"><div id="tbar"></div><span id="tnum"></span></div>':'')+'<div id="gMain">'+inner+'</div>';
+}
+function label(){return G.mode==='level'?'Level '+G.lvl+' · '+LEVELS[G.lvl-1].name:'Endlos · Patient '+(G.total+1);}
+function lose(){
+  G.hearts=Math.max(0,G.hearts-1);G.mistakes++;if(G.hearts<=0)G.over=true;
+  var h=$('hearts');if(h){h.innerHTML=heartsHtml();h.setAttribute('aria-label',G.hearts+' von '+G.maxHearts+' Herzen');}
+  beep(170,0.3,0.08);
+}
+function reward(coins,xp){
+  var g=Math.round(coins*(1+0.15*upLv('weiter')));
+  S.coins+=g;S.xp+=xp;G.coins+=g;G.xp+=xp;save();return g;
+}
+function quit(b){
+  if(b.getAttribute('data-arm')){tab(G&&G.mode==='endless'?'endless':'map');return;}
+  b.setAttribute('data-arm','1');b.textContent='Wirklich?';
+  setTimeout(function(){if(b.isConnected){b.removeAttribute('data-arm');b.textContent='Beenden';}},3000);
+}
+
+/* Timer */
+var TM=null;
+function startTimer(sec,onEnd){
+  stopTimer();var t0=performance.now();G.tl=sec;
+  TM=setInterval(function(){
+    var left=Math.max(0,sec-(performance.now()-t0)/1000);G.tl=left;
+    var b=$('tbar');if(b){b.style.width=(left/sec*100)+'%';if(left/sec<0.25)b.className='low';}
+    var n=$('tnum');if(n)n.textContent=Math.ceil(left)+' s';
+    if(left<=0){stopTimer();onEnd();}
+  },100);
+  var n0=$('tnum');if(n0)n0.textContent=Math.ceil(sec)+' s';
+}
+function stopTimer(){if(TM){clearInterval(TM);TM=null;}}
+
+/* EKG */
+var ecgRAF=0,ecgHR=70;
+function stopEcg(){if(ecgRAF){cancelAnimationFrame(ecgRAF);ecgRAF=0;}}
+function gauss(x,m,s,a){return a*Math.exp(-((x-m)*(x-m))/(2*s*s));}
+function wave(p){return gauss(p,0.16,0.03,0.12)+gauss(p,0.36,0.008,-0.12)+gauss(p,0.385,0.01,1)+gauss(p,0.415,0.01,-0.22)+gauss(p,0.62,0.05,0.22);}
+function startEcg(hr){
+  stopEcg();ecgHR=hr;
+  var cv=$('ecg');if(!cv)return;
+  var ctx=cv.getContext('2d');
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function frame(ts){
+    var d=window.devicePixelRatio||1;
+    var w=Math.round(cv.clientWidth*d),h=Math.round(cv.clientHeight*d);
+    if(cv.width!==w)cv.width=w;if(cv.height!==h)cv.height=h;
+    ctx.clearRect(0,0,w,h);ctx.lineWidth=2*d;ctx.lineJoin='round';ctx.strokeStyle='#63f0b0';ctx.beginPath();
+    var spd=120*d,per=60/ecgHR,now=ts/1000;
+    for(var x=0;x<w;x+=2){
+      var tt=now-(w-x)/spd,p=(tt/per)%1;if(p<0)p+=1;
+      var y=h*0.74-wave(p)*h*0.62;
+      if(x===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    if(!reduce)ecgRAF=requestAnimationFrame(frame);
+  }
+  ecgRAF=requestAnimationFrame(frame);
+}
+
+/* ---------- Patientenfall ---------- */
+function vitalsHtml(c){
+  var hr=c.v[0],s=c.v[1],d=c.v[2],t=c.v[3],o=c.v[4];
+  var rows=[
+    ['HF',hr,'/min',(hr>=130||hr<45)?'red':((hr>100||hr<55)?'amb':'')],
+    ['RR',s+'/'+d,'mmHg',(s<90||s>180)?'red':((s<100||s>150)?'amb':'')],
+    ['Temp',fmt(t.toFixed(1)),'°C',(t>=39.5||t<35)?'red':(t>=38?'amb':'')],
+    ['SpO2',o,'%',o<90?'red':(o<95?'amb':'')]
+  ];
+  return rows.map(function(r){return '<div class="v '+r[3]+'"><small>'+r[0]+'</small><b>'+r[1]+'</b><i>'+r[2]+'</i></div>';}).join('');
+}
+function timeFor(){
+  var base=G.mode==='level'?Math.max(40,75-G.lvl*2):Math.max(30,60-G.saved);
+  return base+upLv('steth')*8;
+}
+function runCase(i){
+  var c=CASES[i];
+  var P={i:i,phase:'exam',done:{},picks:2+upLv('us')+((G.mode==='level'&&G.lvl===1)?1:0),hide:{},kind:'',gain:0};
+  P.dxo=shuffle(c.dx.map(function(t,k){return {t:t,ok:k===0};}));
+  P.txo=shuffle(c.tx.map(function(t,k){return {t:t,ok:k===0};}));
+  G.P=P;
+  var inner='<div><article class="chart"><span class="eyebrow">Patientenakte · '+deptOf(i)+'</span><b>'+c.who+'</b><p class="compl">'+c.c+'</p></article>'+
+    '<div class="monitor" aria-label="Patientenmonitor"><canvas id="ecg" aria-hidden="true"></canvas><div class="vit">'+vitalsHtml(c)+'</div></div></div><div id="gBody"></div>';
+  $('s-game').innerHTML=shell(label(),inner,true);
+  startEcg(c.v[0]);
+  renderBody();
+  startTimer(timeFor(),function(){resolveCase('timeout');});
+}
+function findsHtml(){
+  var c=CASES[G.P.i],P=G.P,out=[];
+  for(var k=0;k<c.ex.length;k++){if(P.done[k])out.push('<span><b>'+c.ex[k][0]+':</b> '+c.ex[k][1]+'</span>');}
+  return out.length?'<div class="finds">'+out.join('')+'</div>':'';
+}
+function usedPicks(){var n=0;for(var k in G.P.done){if(G.P.done[k])n++;}return n;}
+function renderBody(){
+  var P=G.P,c=CASES[P.i],h='';
+  if(P.phase==='exam'){
+    var used=usedPicks();
+    h+='<div class="panel"><h3>Untersuchungen <span class="cnt">'+used+'/'+P.picks+'</span></h3>';
+    for(var k=0;k<c.ex.length;k++){
+      var d=!!P.done[k];
+      h+='<button class="exam'+(d?' done':'')+'" data-act="exam" data-k="'+k+'"'+((!d&&used>=P.picks)?' disabled':'')+'><b>'+c.ex[k][0]+'</b><span>'+(d?c.ex[k][1]:'Antippen zum Untersuchen')+'</span></button>';
+    }
+    h+='</div><button class="primary" data-act="todx">Diagnose stellen</button>';
+  }else if(P.phase==='dx'){
+    h+=findsHtml()+'<div class="panel"><h3>Was ist die Diagnose?</h3>';
+    for(var a=0;a<P.dxo.length;a++){
+      var gone=!!P.hide[a];
+      h+='<button class="opt'+(gone?' gone':'')+'" data-act="dx" data-k="'+a+'"'+(gone?' disabled':'')+'>'+P.dxo[a].t+'</button>';
+    }
+    if(G.hints>0){h+='<button class="ghost" data-act="hint">Hinweis nutzen ('+G.hints+')</button>';}
+    h+='</div>';
+  }else if(P.phase==='tx'){
+    h+=findsHtml()+'<div class="panel"><h3>Welche Therapie wählst du?</h3>';
+    for(var b=0;b<P.txo.length;b++){
+      h+='<button class="opt" data-act="tx" data-k="'+b+'">'+P.txo[b].t+'</button>';
+    }
+    h+='</div>';
+  }else{
+    var cls={win:'ok',txwrong:'amb',dxwrong:'bad',timeout:'bad'}[P.kind];
+    var ttl={win:'Patient gerettet',txwrong:'Diagnose richtig, Therapie falsch',dxwrong:'Falsche Diagnose',timeout:'Zeit abgelaufen'}[P.kind];
+    h+='<div class="fb '+cls+'"><h3>'+ttl+'</h3><p><b>Diagnose:</b> '+c.dx[0]+'</p><p><b>Therapie:</b> '+c.tx[0]+'</p><p class="why">'+c.why+'</p><span class="gain">+'+P.gain+' Münzen</span></div>';
+    h+='<button class="primary" data-act="next">'+(G.over?'Ergebnis anzeigen':'Weiter')+'</button>';
+  }
+  $('gBody').innerHTML=h;
+}
+function resolveCase(kind){
+  stopTimer();var P=G.P;if(P.phase==='fb')return;
+  P.phase='fb';P.kind=kind;
+  var gain=0,xp=0;
+  if(kind==='win'){gain=15+Math.floor(G.tl/4);xp=20;G.saved++;beep(660,0.12);setTimeout(function(){beep(880,0.18);},120);}
+  else if(kind==='txwrong'){gain=5;xp=8;lose();}
+  else if(kind==='dxwrong'){xp=2;lose();}
+  else{lose();}
+  P.gain=reward(gain,xp);
+  S.lex[P.i]=1;G.total++;save();
+  renderBody();
+  window.scrollTo(0,document.body.scrollHeight);
+}
+
+/* ---------- Triage ---------- */
+function runTriage(){
+  var set=TRI[rnd(TRI.length)];
+  var items=shuffle(set.map(function(t,r){return {t:t,r:r};}));
+  G.M={kind:'triage',items:items,next:0,pen:false};
+  var h='<div class="panel"><h3>Triage</h3><p class="lead">Fünf Patienten warten. Tippe sie in der Reihenfolge der Dringlichkeit an, der kritischste zuerst.</p>';
+  for(var k=0;k<items.length;k++){
+    h+='<button class="tri c'+items[k].r+'" data-act="tri" data-r="'+items[k].r+'"><span>'+items[k].t+'</span><span class="bdg"></span></button>';
+  }
+  h+='</div><div id="gBody"></div>';
+  $('s-game').innerHTML=shell(label(),h,false);
+}
+function triTap(b){
+  var M=G.M;if(!M||M.kind!=='triage'||b.classList.contains('on'))return;
+  var r=+b.getAttribute('data-r');
+  if(r===M.next){
+    b.classList.add('on');b.querySelector('.bdg').textContent=(M.next+1);b.disabled=true;
+    M.next++;beep(520+M.next*60,0.08);
+    if(M.next===5)finishMini(!M.pen,'Triage geschafft','Triage mit Fehlern','Gesichtet wird nach Lebensgefahr: zuerst Atemweg, Atmung und Kreislauf (ABCDE), dann Schmerz und Begleitumstände.',triSummary());
+  }else{
+    b.classList.remove('shake');void b.offsetWidth;b.classList.add('shake');
+    if(!M.pen){M.pen=true;lose();}else{beep(170,0.2,0.06);}
+  }
+}
+function triSummary(){
+  var set=G.M.items.slice().sort(function(a,b){return a.r-b.r;});
+  return '<div class="catlist">'+set.map(function(it){return '<div><span class="cat">'+(it.r+1)+'. '+TRICAT[it.r]+'</span>'+it.t+'</div>';}).join('')+'</div>';
+}
+function finishMini(ok,okTitle,badTitle,why,extra){
+  var gain=reward(ok?25:10,ok?25:10);
+  G.total++;
+  var cls=ok?'ok':'amb';
+  var h=$('gBody');
+  h.innerHTML='<div class="fb '+cls+'"><h3>'+(ok?okTitle:badTitle)+'</h3>'+(extra||'')+'<p class="why">'+why+'</p><span class="gain">+'+gain+' Münzen</span></div><button class="primary" data-act="next">'+(G.over?'Ergebnis anzeigen':'Weiter')+'</button>';
+  if(ok){beep(660,0.12);setTimeout(function(){beep(880,0.18);},120);}
+  window.scrollTo(0,document.body.scrollHeight);
+}
+
+/* ---------- Dosierung ---------- */
+function pick(a){return a[rnd(a.length)];}
+function genDose(r){
+  var w,x,n,d,c,ans,q,unit,step,max,expl;
+  if(r===0){
+    w=pick([8,10,12,15,18,20,24]);x=pick([5,10,15,20]);ans=w*x;unit='mg';step=5;
+    q='Kind, '+w+' kg. Verordnet: '+x+' mg pro kg Körpergewicht als Einzeldosis. Wie viel mg gibst du?';
+    expl=w+' kg × '+x+' mg/kg = '+ans+' mg';
+  }else if(r===1){
+    var ok=false;
+    while(!ok){w=pick([10,12,15,20,24]);x=pick([30,40,60]);n=pick([2,3,4]);ans=w*x/n;ok=(ans%5===0&&ans<=500);}
+    unit='mg';step=5;
+    q='Kind, '+w+' kg. Tagesdosis laut Arzt: '+x+' mg pro kg, verteilt auf '+n+' Gaben. Wie viel mg pro Gabe?';
+    expl=w+' kg × '+x+' mg/kg = '+(w*x)+' mg pro Tag, geteilt durch '+n+' = '+ans+' mg';
+  }else{
+    d=pick([25,50,75,100,150]);c=pick([25,50]);ans=d/c;unit='ml';step=0.5;
+    q='Die Ampulle enthält '+c+' mg pro ml. Verordnet sind '+d+' mg. Wie viele ml ziehst du auf?';
+    expl=d+' mg ÷ '+c+' mg/ml = '+fmt(ans)+' ml';
+  }
+  max=unit==='ml'?10:Math.max(100,Math.ceil(ans*2/50)*50);
+  return {q:q,ans:ans,unit:unit,step:step,max:max,expl:expl};
+}
+function runDosis(){
+  G.M={kind:'dosis',round:0,right:0,pen:false,cur:genDose(0),locked:false,val:0};
+  $('s-game').innerHTML=shell(label(),'<div id="gBody"></div>',false);
+  renderDose();
+}
+function renderDose(){
+  var M=G.M,q=M.cur;
+  $('gBody').innerHTML='<div class="dose"><div class="panel"><h3>Dosierung <span class="cnt">Aufgabe '+(M.round+1)+'/3</span></h3></div><p class="q">'+q.q+'</p>'+
+    '<div class="dval" id="dval" aria-live="polite">'+fmt(M.val)+'<small>'+q.unit+'</small></div>'+
+    '<div class="dctl"><button data-act="dminus" aria-label="weniger">−</button><input type="range" id="dr" min="0" max="'+q.max+'" step="'+q.step+'" value="'+M.val+'" aria-label="Menge"><button data-act="dplus" aria-label="mehr">+</button></div>'+
+    '<button class="primary" data-act="dok">Bestätigen</button><p class="note">Rechenaufgabe mit einem erfundenen Präparat. Keine Dosierungsempfehlung.</p></div>';
+  var r=$('dr');
+  r.addEventListener('input',function(){G.M.val=+r.value;$('dval').firstChild.nodeValue=fmt(G.M.val);});
+}
+function doseStep(dir){
+  var M=G.M,q=M.cur,v=M.val+dir*q.step;
+  v=Math.max(0,Math.min(q.max,Math.round(v*100)/100));M.val=v;
+  var r=$('dr');if(r)r.value=v;$('dval').firstChild.nodeValue=fmt(v);
+}
+function doseOk(){
+  var M=G.M,q=M.cur;if(M.locked)return;M.locked=true;
+  var ok=Math.abs(M.val-q.ans)<0.001;
+  if(ok){M.right++;beep(740,0.12);}else{if(!M.pen){M.pen=true;lose();}else{beep(170,0.2,0.06);}}
+  var last=M.round>=2;
+  $('gBody').innerHTML='<div class="dose"><p class="q">'+q.q+'</p><div class="fb '+(ok?'ok':'bad')+'"><h3>'+(ok?'Richtig':'Nicht ganz')+'</h3><p>'+q.expl+'</p></div><button class="primary" data-act="dnext">'+(last?'Auswerten':'Nächste Aufgabe')+'</button></div>';
+}
+function doseNext(){
+  var M=G.M;
+  if(M.round>=2){
+    var ok=M.right>=2&&!M.pen;
+    finishMini(ok,'Dosierung sicher','Dosierung mit Fehlern',M.right+' von 3 Aufgaben richtig. Bei Kindern richtet sich die Dosis nach dem Körpergewicht, und jede Rechnung wird vor dem Verabreichen gegengeprüft.','');
+    return;
+  }
+  M.round++;M.cur=genDose(M.round);M.val=0;M.locked=false;renderDose();
+}
+
+/* ---------- Reanimation ---------- */
+var cprTick=null,cprEnd=null;
+function stopCpr(){if(cprTick){clearInterval(cprTick);cprTick=null;}if(cprEnd){clearTimeout(cprEnd);cprEnd=null;}}
+function runCpr(){
+  G.M={kind:'cpr',step:0,pen:false,taps:[],started:false,done:false};
+  var opts=shuffle([
+    {t:'Ansprechen, Atmung prüfen und Notruf 112 wählen',ok:true},
+    {t:'Erst Wasser holen und ins Gesicht spritzen',ok:false},
+    {t:'Sofort stabile Seitenlage ohne Prüfung',ok:false},
+    {t:'Warten, ob die Person von allein aufwacht',ok:false}
+  ]);
+  G.M.opts=opts;
+  var h='<div class="panel"><h3>Reanimation</h3><p class="lead">Eine Person liegt reglos am Boden. Was tust du zuerst?</p>';
+  for(var k=0;k<opts.length;k++){h+='<button class="opt" data-act="cprq" data-k="'+k+'">'+opts[k].t+'</button>';}
+  h+='</div><div id="gBody"></div>';
+  $('s-game').innerHTML=shell(label(),h,false);
+}
+function cprQuestion(k){
+  var M=G.M,o=M.opts[k];
+  var ok=o.ok;
+  if(!ok){M.pen=true;lose();}else{beep(740,0.12);}
+  var correct=M.opts.filter(function(x){return x.ok;})[0].t;
+  $('s-game').querySelector('#gMain').innerHTML='<div id="gBody"><div class="fb '+(ok?'ok':'bad')+'"><h3>'+(ok?'Richtig':'Nicht ganz')+'</h3><p>Zuerst: '+correct+'. Bei fehlender normaler Atmung folgt sofort die Herzdruckmassage.</p></div><button class="primary" data-act="cprgo">Zur Herzdruckmassage</button></div>';
+}
+function cprGame(){
+  var M=G.M;M.step=1;M.taps=[];M.started=false;M.done=false;
+  $('s-game').querySelector('#gMain').innerHTML='<div id="gBody"><div class="cpr"><p class="lead" style="text-align:center">Drücke im Takt des Rings: 100 bis 120 pro Minute. Der Countdown startet beim ersten Druck.</p>'+
+   '<div class="cprwrap"><div class="ring" aria-hidden="true"></div><button class="cprbtn" id="cprBtn">Drücken</button></div>'+
+   '<div class="cstats" aria-live="off"><div class="v"><small>Zeit</small><b id="cT">15</b><i>s</i></div><div class="v"><small>Druck</small><b id="cN">0</b><i>mal</i></div><div class="v"><small>Tempo</small><b id="cB">0</b><i>/min</i></div></div>'+
+   '<div class="qbar" role="img" aria-label="Anteil im Takt"><i id="cQ"></i></div></div></div>';
+  var btn=$('cprBtn');
+  btn.addEventListener('pointerdown',function(e){e.preventDefault();cprTap();});
+  btn.addEventListener('keydown',function(e){if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();cprTap();}});
+  cprTick=setInterval(function(){beep(900,0.03,0.025);},545);
+}
+function cprWindow(){var w=upLv('koffer')*0.03;return [0.45-w,0.65+w];}
+function cprTap(){
+  var M=G.M;if(!M||M.kind!=='cpr'||M.done)return;
+  var now=performance.now()/1000;
+  M.taps.push(now);
+  if(!M.started){
+    M.started=true;M.t0=now;
+    cprEnd=setTimeout(cprFinish,15000);
+    M.clock=setInterval(function(){
+      var left=Math.max(0,15-(performance.now()/1000-M.t0));
+      var e=$('cT');if(e)e.textContent=Math.ceil(left);
+      if(left<=0)clearInterval(M.clock);
+    },200);
+  }
+  var win=cprWindow(),good=0,n=M.taps.length;
+  for(var k=1;k<n;k++){var iv=M.taps[k]-M.taps[k-1];if(iv>=win[0]&&iv<=win[1])good++;}
+  var ratio=n>1?good/(n-1):0;
+  var N=$('cN');if(N)N.textContent=n;
+  if(n>=2){
+    var rec=M.taps.slice(-5),span=rec[rec.length-1]-rec[0];
+    var bpm=Math.round(60*(rec.length-1)/span);
+    var B=$('cB');if(B)B.textContent=bpm;
+  }
+  var Q=$('cQ');if(Q){Q.style.width=Math.round(ratio*100)+'%';}
+  beep(300,0.05,0.07);
+}
+function cprFinish(){
+  var M=G.M;if(!M||M.done)return;M.done=true;stopCpr();if(M.clock)clearInterval(M.clock);
+  var win=cprWindow(),n=M.taps.length,good=0;
+  for(var k=1;k<n;k++){var iv=M.taps[k]-M.taps[k-1];if(iv>=win[0]&&iv<=win[1])good++;}
+  var ratio=n>1?good/(n-1):0;
+  var span=n>1?M.taps[n-1]-M.taps[0]:0;
+  var bpm=span>0?Math.round(60*(n-1)/span):0;
+  var ok=n>=18&&ratio>=0.7;
+  if(!ok&&!M.pen){M.pen=true;lose();}
+  var extra='<p><b>'+n+'</b> Druckmassagen, Ø <b>'+bpm+'</b> pro Minute, <b>'+Math.round(ratio*100)+' %</b> im Takt.</p>';
+  finishMini(ok&&!M.pen,'Wiederbelebung gelungen','Zu unregelmäßig','Merke: 100 bis 120 Mal pro Minute, 5 bis 6 cm tief, Brustkorb nach jedem Druck ganz entlasten, möglichst ohne Pausen. Ein Defibrillator (AED) wird so früh wie möglich eingesetzt.',extra);
+}
+
+/* ---------- Ergebnis ---------- */
+function showResult(o){
+  var h='<div class="res"><div><span class="eyebrow">'+o.eyebrow+'</span><h2>'+o.title+'</h2></div>';
+  if(o.stars!==undefined)h+=starsSvg(o.stars,'bigstars');
+  h+='<div class="rows">'+o.rows.map(function(r){return '<div><span>'+r[0]+'</span><b>'+r[1]+'</b></div>';}).join('')+'</div>';
+  if(o.note)h+='<p class="lead">'+o.note+'</p>';
+  h+=o.btns;h+='</div>';
+  $('s-result').innerHTML=h;renderTop();show('result');
+}
+function rankNote(){
+  var r=rankOf(S.xp);
+  return r>G.rank0?'Neuer Rang: '+RANKS[r][0]+'.':'';
+}
+function finishLevel(){
+  stopAll();
+  var stars=G.mistakes===0?3:(G.mistakes===1?2:1);
+  var prev=S.stars[G.lvl]||0;
+  if(stars>prev)S.stars[G.lvl]=stars;
+  var bonus=reward(10+10*stars,10*stars);
+  var next=G.lvl<12?G.lvl+1:0;
+  var btns='';
+  if(next)btns+='<button class="primary" data-act="lvl" data-n="'+next+'">Weiter zu Level '+next+'</button>';
+  btns+='<button class="ghost" data-act="lvl" data-n="'+G.lvl+'">Level wiederholen</button><button class="ghost" data-act="tab" data-v="map">Zur Dienstkarte</button>';
+  var note=rankNote();
+  if(!next)note=(note?note+' ':'')+'Du hast alle zwölf Level abgeschlossen. Im Endlosdienst kannst du deinen Bestwert jagen.';
+  showResult({eyebrow:'Level '+G.lvl+' · '+LEVELS[G.lvl-1].name,title:'Dienst geschafft',stars:stars,rows:[['Fehler',G.mistakes],['Geretteten Patienten',G.saved+' von 3'],['Münzen',G.coins],['Erfahrung',G.xp]],note:note,btns:btns});
+  save();
+}
+function endRun(){
+  stopAll();
+  if(G.mode==='level'){
+    var btns='<button class="primary" data-act="lvl" data-n="'+G.lvl+'">Level wiederholen</button><button class="ghost" data-act="tab" data-v="shop">Zur Ausstattung</button><button class="ghost" data-act="tab" data-v="map">Zur Dienstkarte</button>';
+    showResult({eyebrow:'Level '+G.lvl+' · '+LEVELS[G.lvl-1].name,title:'Dienst abgebrochen',rows:[['Geretteten Patienten',G.saved],['Münzen',G.coins],['Erfahrung',G.xp]],note:'Alle Herzen sind verbraucht. Kaffeemaschine, Stethoskop und Fachbuch geben dir mehr Spielraum. '+rankNote(),btns:btns});
+  }else{
+    var newBest=G.saved>S.best;if(newBest)S.best=G.saved;save();
+    var b2='<button class="primary" data-act="endless">Noch ein Dienst</button><button class="ghost" data-act="tab" data-v="shop">Zur Ausstattung</button><button class="ghost" data-act="tab" data-v="map">Zur Dienstkarte</button>';
+    showResult({eyebrow:'Endlosdienst',title:newBest&&G.saved>0?'Neuer Bestwert':'Dienst beendet',rows:[['Geretteten Patienten',G.saved],['Bestwert',S.best],['Münzen',G.coins],['Erfahrung',G.xp]],note:rankNote(),btns:b2});
+  }
+}
+
+/* ---------- Eingaben ---------- */
+var ACTS={
+  tab:function(b){tab(b.getAttribute('data-v'));},
+  lvl:function(b){startLevel(+b.getAttribute('data-n'));},
+  endless:function(){startEndless();},
+  snd:function(){S.mute=!S.mute;save();renderTop();if(!S.mute)beep(660,0.1);},
+  buy:function(b){
+    var u=UPS.filter(function(x){return x.id===b.getAttribute('data-id');})[0],lv=upLv(u.id);
+    if(lv>=u.max||S.coins<u.cost[lv])return;
+    S.coins-=u.cost[lv];S.up[u.id]=lv+1;save();beep(700,0.1);renderTop();renderShop();
+  },
+  reset:function(b){
+    if(b.getAttribute('data-arm')){S=defState();save();renderTop();renderShop();return;}
+    b.setAttribute('data-arm','1');b.textContent='Wirklich alles löschen? Nochmal tippen';
+    setTimeout(function(){if(b.isConnected){b.removeAttribute('data-arm');b.textContent='Spielstand löschen';}},4000);
+  },
+  quit:function(b){quit(b);},
+  exam:function(b){
+    var P=G.P,k=+b.getAttribute('data-k');
+    if(P.phase!=='exam'||P.done[k]||usedPicks()>=P.picks)return;
+    P.done[k]=true;beep(500,0.06);renderBody();
+  },
+  todx:function(){G.P.phase='dx';renderBody();},
+  hint:function(){
+    var P=G.P;if(G.hints<=0)return;
+    var c=[];for(var k=0;k<P.dxo.length;k++){if(!P.dxo[k].ok&&!P.hide[k])c.push(k);}
+    if(c.length<=1)return;
+    P.hide[c[rnd(c.length)]]=true;G.hints--;renderBody();
+  },
+  dx:function(b){
+    var P=G.P;if(P.phase!=='dx')return;
+    var o=P.dxo[+b.getAttribute('data-k')];
+    if(o.ok){beep(620,0.08);P.phase='tx';renderBody();}else{resolveCase('dxwrong');}
+  },
+  tx:function(b){
+    var P=G.P;if(P.phase!=='tx')return;
+    var o=P.txo[+b.getAttribute('data-k')];
+    resolveCase(o.ok?'win':'txwrong');
+  },
+  next:function(){afterTask();},
+  tri:function(b){triTap(b);},
+  dminus:function(){doseStep(-1);},
+  dplus:function(){doseStep(1);},
+  dok:function(){doseOk();},
+  dnext:function(){doseNext();},
+  cprq:function(b){
+    if(G.M.step!==0||G.M.answered)return;G.M.answered=true;cprQuestion(+b.getAttribute('data-k'));
+  },
+  cprgo:function(){cprGame();}
+};
+document.addEventListener('click',function(e){
+  var b=e.target.closest?e.target.closest('[data-act]'):null;
+  if(!b||b.disabled)return;
+  var f=ACTS[b.getAttribute('data-act')];
+  if(f)f(b,e);
+});
+
+/* ---------- Start ---------- */
+renderTop();renderMap();show('map');
+window.__kd={CASES:CASES,LEVELS:LEVELS,TRI:TRI};
+})();
+</script>
+
+</body>
+</html>
